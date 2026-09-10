@@ -4,14 +4,9 @@ import {
   Database,
   ShieldCheck,
   Info,
-  Save,
 } from "lucide-react";
 
 const Settings = () => {
-  const handleSave = () => {
-    alert("Settings saved successfully.");
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -21,7 +16,7 @@ const Settings = () => {
         </h1>
 
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Manage basic system information and configuration.
+          View basic system information and configuration.
         </p>
       </div>
 
@@ -96,16 +91,6 @@ const Settings = () => {
             />
           </div>
         </div>
-
-        <div className="mt-6">
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
-          >
-            <Save size={18} />
-            Save Settings
-          </button>
-        </div>
       </div>
 
       {/* Database */}
@@ -146,7 +131,7 @@ const Settings = () => {
             </h2>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              User authentication and database security will be managed using
+              User authentication and database security are provided through
               Firebase Authentication and Firestore security rules.
             </p>
           </div>
@@ -180,3 +165,4 @@ const Settings = () => {
 };
 
 export default Settings;
+

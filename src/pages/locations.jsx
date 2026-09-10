@@ -1,38 +1,77 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   MapPin,
   Search,
-  Plus,
   Users,
-  Trash2,
+  Loader2,
 } from "lucide-react";
+import {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+} from "firebase/firestore";
+import { db } from "../firebase/firebase.jsx";
 
 const Locations = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [locations, setLocations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const [locations, setLocations] = useState([
-    {
-      id: 1,
-      location: "Awka",
-      state: "Anambra",
-      population: 247200,
-      year: 2025,
-    },
-    {
-      id: 2,
-      location: "Onitsha",
-      state: "Anambra",
-      population: 364800,
-      year: 2025,
-    },
-    {
-      id: 3,
-      location: "Nnewi",
-      state: "Anambra",
-      population: 195000,
-      year: 2025,
-    },
-  ]);
+  useEffect(() => {
+    const recordsQuery = query(
+      collection(db, "populationRecords"),
+      orderBy("year", "desc")
+    );
+
+    const unsubscribe = onSnapshot(
+      recordsQuery,
+      (snapshot) => {
+        const records = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        // Group population records by location and year
+        const groupedLocations = {};
+
+        records.forEach((record) => {
+          const locationName = record.location || "Unknown";
+          const stateName = record.state || "Unknown";
+          const year = Number(record.year) || 0;
+
+          const key = `${locationName}-${stateName}-${year}`;
+
+          const male = Number(record.male) || 0;
+          const female = Number(record.female) || 0;
+
+          if (!groupedLocations[key]) {
+            groupedLocations[key] = {
+              id: key,
+              location: locationName,
+              state: stateName,
+              year,
+              population: 0,
+            };
+          }
+
+          groupedLocations[key].population += male + female;
+        });
+
+        setLocations(Object.values(groupedLocations));
+        setLoading(false);
+        setError("");
+      },
+      (firebaseError) => {
+        console.error("Error loading locations:", firebaseError);
+        setError("Unable to load locations from the database.");
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const filteredLocations = locations.filter((location) => {
     const search = searchTerm.toLowerCase();
@@ -43,18 +82,6 @@ const Locations = () => {
     );
   });
 
-  const deleteLocation = (id) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to remove this location?"
-    );
-
-    if (!confirmed) return;
-
-    setLocations((previous) =>
-      previous.filter((location) => location.id !== id)
-    );
-  };
-
   const totalPopulation = locations.reduce(
     (total, location) => total + location.population,
     0
@@ -63,21 +90,14 @@ const Locations = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Locations
-          </h1>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">
+          Locations
+        </h1>
 
-          <p className="mt-1 text-gray-600">
-            View population information by location.
-          </p>
-        </div>
-
-        <button className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700">
-          <Plus size={20} />
-          Add Location
-        </button>
+        <p className="mt-1 text-gray-600">
+          View population information by location.
+        </p>
       </div>
 
       {/* Summary */}
@@ -85,10 +105,7 @@ const Locations = () => {
         <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
           <div className="flex items-center gap-4">
             <div className="rounded-lg bg-blue-100 p-3">
-              <MapPin
-                size={24}
-                className="text-blue-600"
-              />
+              <MapPin size={24} className="text-blue-600" />
             </div>
 
             <div>
@@ -106,10 +123,7 @@ const Locations = () => {
         <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
           <div className="flex items-center gap-4">
             <div className="rounded-lg bg-green-100 p-3">
-              <Users
-                size={24}
-                className="text-green-600"
-              />
+              <Users size={24} className="text-green-600" />
             </div>
 
             <div>
@@ -151,12 +165,27 @@ const Locations = () => {
           </h2>
 
           <p className="mt-1 text-sm text-gray-500">
-            Locations currently included in the population
-            analysis.
+            Locations currently included in the population analysis.
           </p>
         </div>
 
-        {filteredLocations.length === 0 ? (
+        {/* Loading */}
+        {loading && (
+          <div className="flex items-center justify-center gap-2 p-10 text-gray-500">
+            <Loader2 size={20} className="animate-spin" />
+            Loading locations...
+          </div>
+        )}
+
+        {/* Error */}
+        {!loading && error && (
+          <div className="p-10 text-center text-red-600">
+            {error}
+          </div>
+        )}
+
+        {/* Empty */}
+        {!loading && !error && filteredLocations.length === 0 && (
           <div className="p-10 text-center">
             <MapPin
               size={42}
@@ -168,10 +197,13 @@ const Locations = () => {
             </p>
 
             <p className="mt-1 text-sm text-gray-500">
-              Try another search term.
+              Add a population record to create a location.
             </p>
           </div>
-        ) : (
+        )}
+
+        {/* Location List */}
+        {!loading && !error && filteredLocations.length > 0 && (
           <div className="divide-y divide-gray-200">
             {filteredLocations.map((location) => (
               <div
@@ -197,26 +229,14 @@ const Locations = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-6 md:justify-end">
-                  <div>
-                    <p className="text-sm text-gray-500">
-                      Population
-                    </p>
+                <div>
+                  <p className="text-sm text-gray-500">
+                    Population
+                  </p>
 
-                    <p className="font-bold text-gray-900">
-                      {location.population.toLocaleString()}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() =>
-                      deleteLocation(location.id)
-                    }
-                    className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                    title="Remove location"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <p className="font-bold text-gray-900">
+                    {location.population.toLocaleString()}
+                  </p>
                 </div>
               </div>
             ))}

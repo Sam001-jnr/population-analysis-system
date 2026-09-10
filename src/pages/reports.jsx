@@ -1,67 +1,88 @@
-import { useMemo, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  onSnapshot,
+} from "firebase/firestore";
+
 import {
   FileText,
   Users,
   UserRound,
   MapPin,
   Printer,
+  Loader2,
 } from "lucide-react";
 
+import { db } from "../firebase/firebase.jsx";
+
 const Reports = () => {
+  const [records, setRecords] = useState([]);
   const [selectedYear, setSelectedYear] = useState("All");
   const [selectedState, setSelectedState] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Temporary data — we will connect this to Firebase later
-  const records = [
-    {
-      id: 1,
-      location: "Awka",
-      state: "Anambra",
-      male: 125400,
-      female: 121800,
-      year: 2025,
-    },
-    {
-      id: 2,
-      location: "Onitsha",
-      state: "Anambra",
-      male: 185200,
-      female: 179600,
-      year: 2025,
-    },
-    {
-      id: 3,
-      location: "Nnewi",
-      state: "Anambra",
-      male: 98700,
-      female: 96300,
-      year: 2025,
-    },
-  ];
+  // Get population records from Firestore
+  useEffect(() => {
+    const recordsRef = collection(db, "populationRecords");
 
-  const years = [...new Set(records.map((record) => record.year))];
-  const states = [...new Set(records.map((record) => record.state))];
+    const unsubscribe = onSnapshot(
+      recordsRef,
+      (snapshot) => {
+        const data = snapshot.docs.map((document) => ({
+          id: document.id,
+          ...document.data(),
+        }));
 
+        setRecords(data);
+        setLoading(false);
+      },
+      (firebaseError) => {
+        console.error(firebaseError);
+        setError("Unable to load population reports.");
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Get available years from real records
+  const years = useMemo(() => {
+    return [...new Set(records.map((record) => Number(record.year)).filter(Boolean))]
+      .sort((a, b) => b - a);
+  }, [records]);
+
+  // Get available states from real records
+  const states = useMemo(() => {
+    return [...new Set(records.map((record) => record.state).filter(Boolean))]
+      .sort();
+  }, [records]);
+
+  // Filter records
   const filteredRecords = useMemo(() => {
     return records.filter((record) => {
       const yearMatch =
         selectedYear === "All" ||
-        record.year.toString() === selectedYear;
+        Number(record.year) === Number(selectedYear);
 
       const stateMatch =
-        selectedState === "All" || record.state === selectedState;
+        selectedState === "All" ||
+        record.state === selectedState;
 
       return yearMatch && stateMatch;
     });
-  }, [selectedYear, selectedState]);
+  }, [records, selectedYear, selectedState]);
 
+  // Calculate totals
   const totalMale = filteredRecords.reduce(
-    (sum, record) => sum + record.male,
+    (sum, record) => sum + Number(record.male || 0),
     0
   );
 
   const totalFemale = filteredRecords.reduce(
-    (sum, record) => sum + record.female,
+    (sum, record) => sum + Number(record.female || 0),
     0
   );
 
@@ -87,7 +108,8 @@ const Reports = () => {
 
         <button
           onClick={handlePrint}
-          className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+          disabled={filteredRecords.length === 0}
+          className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Printer size={18} />
           Print Report
@@ -108,8 +130,23 @@ const Reports = () => {
           <p className="mt-3 text-lg font-semibold">
             Population Analysis Report
           </p>
+
+          <p className="mt-2 text-sm">
+            Year: {selectedYear === "All" ? "All Years" : selectedYear}
+          </p>
+
+          <p className="text-sm">
+            State: {selectedState === "All" ? "All States" : selectedState}
+          </p>
         </div>
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-400">
+          {error}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800 print:hidden">
@@ -124,6 +161,7 @@ const Reports = () => {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
+          {/* Year */}
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
               Year
@@ -144,6 +182,7 @@ const Reports = () => {
             </select>
           </div>
 
+          {/* State */}
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
               State
@@ -166,166 +205,191 @@ const Reports = () => {
         </div>
       </div>
 
-      {/* Report Content */}
-      <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        {/* Summary */}
-        <div>
-          <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
-            Population Summary
-          </h2>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
-              <div className="mb-2 flex items-center gap-2 text-blue-600">
-                <Users size={20} />
-                <span className="text-sm font-medium">Total Population</span>
-              </div>
-
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {totalPopulation.toLocaleString()}
-              </p>
-            </div>
-
-            <div className="rounded-lg bg-indigo-50 p-4 dark:bg-indigo-900/20">
-              <div className="mb-2 flex items-center gap-2 text-indigo-600">
-                <UserRound size={20} />
-                <span className="text-sm font-medium">Male</span>
-              </div>
-
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {totalMale.toLocaleString()}
-              </p>
-            </div>
-
-            <div className="rounded-lg bg-pink-50 p-4 dark:bg-pink-900/20">
-              <div className="mb-2 flex items-center gap-2 text-pink-600">
-                <UserRound size={20} />
-                <span className="text-sm font-medium">Female</span>
-              </div>
-
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {totalFemale.toLocaleString()}
-              </p>
-            </div>
-
-            <div className="rounded-lg bg-emerald-50 p-4 dark:bg-emerald-900/20">
-              <div className="mb-2 flex items-center gap-2 text-emerald-600">
-                <MapPin size={20} />
-                <span className="text-sm font-medium">Locations</span>
-              </div>
-
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {filteredRecords.length}
-              </p>
-            </div>
+      {/* Loading */}
+      {loading ? (
+        <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-white py-20 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
+            <Loader2 size={24} className="animate-spin text-blue-600" />
+            <span>Loading population report...</span>
           </div>
         </div>
-
-        {/* Table */}
-        <div>
-          <div className="mb-4 flex items-center gap-2">
-            <FileText size={20} className="text-blue-600" />
-
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Population by Location
+      ) : (
+        /* Report Content */
+        <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          {/* Summary */}
+          <div>
+            <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
+              Population Summary
             </h2>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {/* Total Population */}
+              <div className="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
+                <div className="mb-2 flex items-center gap-2 text-blue-600">
+                  <Users size={20} />
+                  <span className="text-sm font-medium">
+                    Total Population
+                  </span>
+                </div>
+
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {totalPopulation.toLocaleString()}
+                </p>
+              </div>
+
+              {/* Male */}
+              <div className="rounded-lg bg-indigo-50 p-4 dark:bg-indigo-900/20">
+                <div className="mb-2 flex items-center gap-2 text-indigo-600">
+                  <UserRound size={20} />
+                  <span className="text-sm font-medium">Male</span>
+                </div>
+
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {totalMale.toLocaleString()}
+                </p>
+              </div>
+
+              {/* Female */}
+              <div className="rounded-lg bg-pink-50 p-4 dark:bg-pink-900/20">
+                <div className="mb-2 flex items-center gap-2 text-pink-600">
+                  <UserRound size={20} />
+                  <span className="text-sm font-medium">Female</span>
+                </div>
+
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {totalFemale.toLocaleString()}
+                </p>
+              </div>
+
+              {/* Locations */}
+              <div className="rounded-lg bg-emerald-50 p-4 dark:bg-emerald-900/20">
+                <div className="mb-2 flex items-center gap-2 text-emerald-600">
+                  <MapPin size={20} />
+                  <span className="text-sm font-medium">Locations</span>
+                </div>
+
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                  {filteredRecords.length}
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 text-left dark:border-slate-700">
-                  <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                    Location
-                  </th>
+          {/* Table */}
+          <div>
+            <div className="mb-4 flex items-center gap-2">
+              <FileText size={20} className="text-blue-600" />
 
-                  <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                    State
-                  </th>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                Population by Location
+              </h2>
+            </div>
 
-                  <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                    Male
-                  </th>
+            {filteredRecords.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 px-6 py-12 text-center dark:border-slate-600">
+                <FileText
+                  size={40}
+                  className="mx-auto text-slate-300 dark:text-slate-600"
+                />
 
-                  <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                    Female
-                  </th>
+                <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">
+                  No matching records
+                </h3>
 
-                  <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                    Total
-                  </th>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Try changing the selected year or state.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px] border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-left dark:border-slate-700 dark:bg-slate-900/50">
+                      <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Location
+                      </th>
 
-                  <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                    Year
-                  </th>
-                </tr>
-              </thead>
+                      <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        State
+                      </th>
 
-              <tbody>
-                {filteredRecords.length > 0 ? (
-                  filteredRecords.map((record) => {
-                    const total = record.male + record.female;
+                      <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Male
+                      </th>
 
-                    return (
-                      <tr
-                        key={record.id}
-                        className="border-b border-slate-100 dark:border-slate-700"
-                      >
-                        <td className="px-4 py-3 text-sm font-medium text-slate-900 dark:text-white">
-                          {record.location}
-                        </td>
+                      <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Female
+                      </th>
 
-                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                          {record.state}
-                        </td>
+                      <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Total
+                      </th>
 
-                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                          {record.male.toLocaleString()}
-                        </td>
+                      <th className="px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Year
+                      </th>
+                    </tr>
+                  </thead>
 
-                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                          {record.female.toLocaleString()}
-                        </td>
+                  <tbody>
+                    {filteredRecords.map((record) => {
+                      const male = Number(record.male || 0);
+                      const female = Number(record.female || 0);
+                      const total = male + female;
 
-                        <td className="px-4 py-3 text-sm font-semibold text-slate-900 dark:text-white">
-                          {total.toLocaleString()}
-                        </td>
+                      return (
+                        <tr
+                          key={record.id}
+                          className="border-b border-slate-100 dark:border-slate-700"
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900 dark:text-white">
+                            {record.location || "—"}
+                          </td>
 
-                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                          {record.year}
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td
-                      colSpan="6"
-                      className="px-4 py-8 text-center text-sm text-slate-500"
-                    >
-                      No records match the selected filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                            {record.state || "—"}
+                          </td>
+
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                            {male.toLocaleString()}
+                          </td>
+
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                            {female.toLocaleString()}
+                          </td>
+
+                          <td className="px-4 py-3 text-sm font-semibold text-slate-900 dark:text-white">
+                            {total.toLocaleString()}
+                          </td>
+
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                            {record.year || "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Report Footer */}
+          <div className="border-t border-slate-200 pt-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            <p>
+              Report generated from the Computer-Based Population Analysis
+              System.
+            </p>
+
+            <p className="mt-1">
+              Case Study: National Population Commission (NPC)
+            </p>
           </div>
         </div>
-
-        {/* Report Footer */}
-        <div className="border-t border-slate-200 pt-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-          <p>
-            Report generated from the Computer-Based Population Analysis
-            System.
-          </p>
-
-          <p className="mt-1">
-            Case Study: National Population Commission (NPC)
-          </p>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
 
 export default Reports;
+
